@@ -183,7 +183,7 @@ static inline void ARM_SetTID(u32 pid) {
 /* CPU ID */
 static inline u32 ARM_CoreID(void) {
 	u32 id;
-	#ifdef ARM9
+	#if MAX_CPU == 1
 	id = 0;
 	#else
 	ARM_MRC(p15, 0, id, c0, c0, 5);
@@ -320,6 +320,7 @@ static inline void ARM_WbInvDC_Range(void *base, u32 len) {
 
 static inline void ARM_BKPT(void) {
 	__builtin_trap();
+	__builtin_unreachable();
 }
 
 #endif // __ASSEMBLER__

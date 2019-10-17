@@ -95,8 +95,7 @@ corezero_start:
 
 coresmp_start:
     bl SYS_CoreInit
-    ldr lr, =MainLoop
-    bx lr
+    bl MainLoop
 
 .section .bss.stack
 .align 12 @ make sure stack is aligned to a page boundary

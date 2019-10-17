@@ -19,7 +19,7 @@
 #pragma once
 #include <types.h>
 
-typedef void (*IRQ_Handler)(u32 irqn);
+typedef void (*GIC_IntHandler)(void);
 
 #define GIC_SOFTIRQ_SOURCE(n)	(((n) >> 10) & 0xF)
 #define GIC_SOFTIRQ_NUMBER(n)	((n) & 0x3FF)
@@ -38,7 +38,7 @@ enum {
 void GIC_GlobalReset(void);
 void GIC_LocalReset(void);
 
-int GIC_Enable(u32 irqn, u32 coremask, u32 prio, IRQ_Handler handler);
-int GIC_Disable(u32 irqn, u32 coremask);
+int GIC_Enable(u32 irqn, u32 cpumask, u32 prio, GIC_IntHandler handler);
+int GIC_Disable(u32 irqn, u32 cpumask);
 
-void GIC_TriggerSoftIRQ(u32 irqn, u32 mode, u32 coremask);
+void GIC_TriggerSoftIRQ(u32 irqn, u32 mode, u32 cpumask);

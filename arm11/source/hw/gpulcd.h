@@ -21,11 +21,14 @@
 
 #define VBLANK_INTERRUPT	(0x2A)
 
+/* LCD */
 void LCD_SetBrightness(u8 brightness);
 u8 LCD_GetBrightness(void);
 
-void LCD_Deinitialize(void);
+void LCD_Init(void);
+void LCD_Shutdown(void);
 
+/* GX Memory Fill */
 void GPU_PSCFill(u32 start, u32 end, u32 fv);
 
 enum {
@@ -36,6 +39,11 @@ enum {
 	PDC_RGBA4 = 4,
 };
 
+/* GPU/Framebuffer Management */
 void GPU_SetFramebufferMode(u32 screen, u8 mode);
 void GPU_SetFramebuffers(const u32 *framebuffers);
 void GPU_Init(void);
+void GPU_Shutdown(void);
+
+void GPULCD_Init(void);
+void GPULCD_Shutdown(void);

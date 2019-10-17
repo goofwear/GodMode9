@@ -24,9 +24,9 @@
 typedef struct {
 	s16 cpad_x, cpad_y;
 	s16 ts_x, ts_y;
-} CODEC_Input;
+} CODEC_InputData;
 
 void CODEC_Init(void);
 
 void CODEC_GetRawData(u32 *buffer);
-void CODEC_Get(CODEC_Input *input);
+void CODEC_GetInputData(CODEC_InputData *input);

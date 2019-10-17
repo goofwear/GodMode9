@@ -20,10 +20,10 @@
 
 #include <types.h>
 
-#define SPI_DEV_NVRAM 1
-#define SPI_DEV_CODEC 3
-#define SPI_DEV_CART_FLASH 4
-#define SPI_DEV_CART_IR 5
+#define SPI_DEV_NVRAM 0
+#define SPI_DEV_CODEC 1
+#define SPI_DEV_CART_FLASH 2
+#define SPI_DEV_CART_IR 3
 
 typedef struct {
 	void *buf;

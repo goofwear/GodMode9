@@ -21,11 +21,14 @@
 
 #include <vram.h>
 
-static const u8 num_font[16*8];
+#define XHNDL_CODE	__attribute__((section(".vector.xcode")))
+#define XHNDL_DATA	__attribute__((section(".vector.xdata")))
 
 #define SCREEN ((u16*)(VRAM_TOP_LA))
 
-void draw_char(u16 *fb, int c, int x, int y)
+static const u8 num_font[16*8];
+
+static void XHNDL_CODE draw_char(u16 *fb, int c, int x, int y)
 {
 	for (int _y = 0; _y < 8; _y++) {
 		for (int _x = 0; _x < 8; _x++) {
@@ -41,7 +44,7 @@ void draw_char(u16 *fb, int c, int x, int y)
 	}
 }
 
-void draw_hex(u16 *fb, u32 num, int x, int y)
+static void XHNDL_CODE draw_hex(u16 *fb, u32 num, int x, int y)
 {
 	x += 7*8;
 	for (int i = 0; i < 8; i++) {
@@ -51,7 +54,7 @@ void draw_hex(u16 *fb, u32 num, int x, int y)
 	}
 }
 
-void do_exception(u32 type, u32 *regs)
+void XHNDL_CODE do_exception(u32 type, u32 *regs)
 {
 	for (int i = 0; i < 400*240; i++)
 		SCREEN[i] = 0;
@@ -70,7 +73,7 @@ void do_exception(u32 type, u32 *regs)
 		ARM_WFI();
 }
 
-static const u8 num_font[] = {
+static const u8 XHNDL_DATA num_font[] = {
 	0b00000000,
 	0b00011000,
 	0b00100100,

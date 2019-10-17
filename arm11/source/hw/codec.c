@@ -119,12 +119,11 @@ void CODEC_GetRawData(u32 *buffer)
 	CODEC_RegReadBuf(1, buffer, 0x34);
 }
 
-void CODEC_Get(CODEC_Input *input)
+void CODEC_GetInputData(CODEC_InputData *input)
 {
 	u32 raw_data_buf[0x34 / 4];
 	u8 *raw_data = (u8*)raw_data_buf;
 	s16 cpad_x, cpad_y;
-	bool ts_pressed;
 
 	CODEC_GetRawData(raw_data_buf);
 
@@ -135,12 +134,6 @@ void CODEC_Get(CODEC_Input *input)
 	input->cpad_x = (abs(cpad_x) > CPAD_THRESH_X) ? -cpad_x : 0;
 	input->cpad_y = (abs(cpad_y) > CPAD_THRESH_Y) ? cpad_y : 0;
 
-	ts_pressed = !(raw_data[0] & BIT(4));
-	if (ts_pressed) {
-		input->ts_x = (raw_data[0] << 8) | raw_data[1];
-		input->ts_y = (raw_data[10] << 8) | raw_data[11];
-	} else {
-		input->ts_x = 0xFFFF;
-		input->ts_y = 0xFFFF;
-	}
+	input->ts_x = (raw_data[0] << 8) | raw_data[1];
+	input->ts_y = (raw_data[10] << 8) | raw_data[11];
 }

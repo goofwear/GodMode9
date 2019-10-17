@@ -47,7 +47,7 @@ void LCD_Initialize(u8 brightness)
 	*REG_LCD(0xA44) = 0x1023E;
 }
 
-void LCD_Deinitialize(void)
+void LCD_Shutdown(void)
 {
 	*REG_LCD(0x244) = 0;
 	*REG_LCD(0xA44) = 0;
@@ -148,18 +148,14 @@ void GPU_SetFramebufferMode(u32 screen, u8 mode)
 	*fbstr_reg = stride;
 }
 
+void GPU_Shutdown(void)
+{
+	*REG_GPU_CNT = 0x10001;
+	TIMER_WaitTicks(CLK_MS_TO_TICKS(40));
+}
+
 void GPU_Init(void)
 {
-	if (*REG_GPU_CNT == 0x1007F) {
-		MCU_PushToLCD(false);
-
-		LCD_Deinitialize();
-		*REG_GPU_CNT = 0x10001;
-		TIMER_WaitTicks(CLK_MS_TO_TICKS(40));
-	}
-
-	LCD_Initialize(0x20);
-
 	*REG_GPU_CNT = 0x1007F;
 	*GPU_PDC(0, 0x00) = 0x000001C2;
 	*GPU_PDC(0, 0x04) = 0x000000D1;
@@ -228,4 +224,21 @@ void GPU_Init(void)
 
 	for (u32 i = 0; i < 256; i++)
 		*GPU_PDC(1, 0x84) = 0x10101 * i;
+}
+
+void GPULCD_Shutdown(void)
+{
+	MCU_PushToLCD(false);
+	LCD_Shutdown();
+	GPU_Shutdown();
+}
+
+void GPULCD_Init(void)
+{
+	if (*REG_GPU_CNT == 0x1007F)
+		GPULCD_Shutdown();
+
+	GPU_Init();
+	LCD_Initialize(0x20);
+	MCU_PushToLCD(true);
 }

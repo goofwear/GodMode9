@@ -31,16 +31,16 @@
     b XRQ_Main
 .endm
 
-.section .vector, "ax"
+.section .vector.jtable, "ax"
 vectors:
     b XRQ_Reset
     b XRQ_Undefined
     b XRQ_SVC
     b XRQ_PrefetchAbt
     b XRQ_DataAbt
-    b XRQ_Reserved
+    udf @ b XRQ_Reserved
     b XRQ_IRQ
-    b XRQ_FIQ
+    TRAP_ENTRY 7 @ b XRQ_FIQ
 
 XRQ_Reset:
     TRAP_ENTRY 0
@@ -57,11 +57,6 @@ XRQ_PrefetchAbt:
 XRQ_DataAbt:
     TRAP_ENTRY 4
 
-XRQ_Reserved:
-    TRAP_ENTRY 5
-
-XRQ_FIQ:
-    TRAP_ENTRY 7
 
 XRQ_Main:
     ldr sp, =(exception_stack_top - 32*4)
@@ -82,11 +77,7 @@ XRQ_Main:
 
     add r3, sp, #8*4
     msr cpsr_c, r2
-    nop
-    nop
     stmia r3!, {r8-r14}
-    nop
-    nop
     msr cpsr_c, r1
 
     mrc p15, 0, r4, c5, c0, 0 @ data fault status register
@@ -100,21 +91,14 @@ XRQ_Main:
 
 
 XRQ_IRQ:
-    sub lr, lr, #4             @ Fix return address
-    srsfd sp!, #SR_SVC_MODE    @ Store IRQ mode LR and SPSR on the SVC stack
-    cps #SR_SVC_MODE           @ Switch to SVC mode
-    push {r0-r4, r12, lr}      @ Preserve registers
-
-    and r4, sp, #7             @ Fix SP to be 8byte aligned
-    sub sp, sp, r4
-
-    mov lr, pc
-    ldr pc, =GIC_MainHandler
-
-    add sp, sp, r4
-
-    pop {r0-r4, r12, lr}
+    sub lr, lr, #4          @ Fix return address
+    srsfd sp!, #SR_SVC_MODE @ Store IRQ mode LR and SPSR on the SVC stack
+    cps #SR_SVC_MODE        @ Switch to SVC mode
+    push {r0-r3, r12, lr}   @ Preserve registers
+    bl GIC_MainHandler
+    pop {r0-r3, r12, lr}
     rfeia sp!               @ Return from exception
+
 
 .section .bss.xrq_stk
 .align 12

@@ -14,7 +14,8 @@ SECTIONS
     {
         __vector_pa = LOADADDR(.vector);
         __vector_va = ABSOLUTE(.);
-        KEEP(*(.vector))
+        KEEP(*(.vector.jtable))
+        KEEP(*(.vector*))
         . = ALIGN(4K);
         __vector_len = . - __vector_va;
     } >HIGHRAM AT>AXIWRAM

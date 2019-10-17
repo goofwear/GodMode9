@@ -35,6 +35,9 @@
 #define clamp(x, min, max) \
     ((x) < (max) ? ((x) > (min) ? (x) : (min)) : (max))
 
+#define top_bit(x) \
+    (31 - __builtin_clz(x))
+
 #define getbe16(d) \
     (((d)[0]<<8) | (d)[1])
 #define getbe32(d) \

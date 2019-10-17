@@ -23,9 +23,7 @@
 
 
 #define I2C1_REGS_BASE  (0x10161000)
-
 #define I2C2_REGS_BASE  (0x10144000)
-
 #define I2C3_REGS_BASE  (0x10148000)
 
 

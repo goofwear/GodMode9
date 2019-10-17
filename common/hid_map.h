@@ -33,3 +33,5 @@
 #define SD_EJECT      ((u32)1 << 21)
 
 #define TIMEOUT_HID   ((u32)1 << 31)
+
+#define HID_TS_VALID(x)	(((x) & (1 << 12)) == 0)

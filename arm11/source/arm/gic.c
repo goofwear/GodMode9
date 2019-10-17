@@ -16,7 +16,7 @@
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <types.h>
+#include <common.h>
 #include <arm.h>
 
 #include "arm/gic.h"
@@ -57,47 +57,49 @@
 #define IRQN_IS_VALID(n)    ((n) < DIC_MAX_IRQ)
 
 #define LOCAL_IRQ_OFF(c, n) (((c) * LOCAL_IRQS) + (n))
-#define GLOBAL_IRQ_OFF(n)   (((MAX_CPU-1) * LOCAL_IRQS) + (n))
+#define GLOBAL_IRQ_OFF(n)   ((MAX_CPU * LOCAL_IRQS) + (n))
+
 #define IRQ_TABLE_OFF(c, n) \
-    (IRQN_IS_LOCAL(n) ? LOCAL_IRQ_OFF((c), (n)) : GLOBAL_IRQ_OFF(n))
+    (IRQN_IS_LOCAL(n) ? LOCAL_IRQ_OFF(c, n) : GLOBAL_IRQ_OFF(n))
 
-static IRQ_Handler IRQ_Handlers[IRQ_TABLE_OFF(0, MAX_IRQ)];
+static GIC_IntHandler IRQ_Handlers[GLOBAL_IRQ_OFF(MAX_IRQ)];
 
-static IRQ_Handler GIC_GetCB(u32 irqn)
+static GIC_IntHandler GIC_GetCB(u32 irqn, u32 cpu)
 {
-    irqn &= ~(15 << 10); // clear source CPU bits
-    if (IRQN_IS_VALID(irqn)) {
-        return IRQ_Handlers[IRQ_TABLE_OFF(ARM_CoreID(), irqn)];
+    //irqn &= ~(15 << 10); // clear source CPU bits
+    return IRQ_Handlers[IRQ_TABLE_OFF(cpu, irqn)];
+}
+
+static void GIC_SetCB(u32 irqn, u32 cpumask, GIC_IntHandler handler)
+{
+    if (IRQN_IS_LOCAL(irqn)) {
+        while(cpumask) {
+            u32 cpu = top_bit(cpumask);
+            IRQ_Handlers[LOCAL_IRQ_OFF(cpu, irqn)] = handler;
+            cpumask &= ~BIT(cpu);
+        }
     } else {
-        // Possibly have a dummy handler function that
-        // somehow notifies of an unhandled interrupt?
-        return NULL;
+        IRQ_Handlers[GLOBAL_IRQ_OFF(irqn)] = handler;
     }
 }
 
-static void GIC_SetCB(u32 irqn, u32 cpu, IRQ_Handler handler)
+static void GIC_ClearCB(u32 irqn, u32 cpumask)
 {
-    if (IRQN_IS_VALID(irqn)) {
-        IRQ_Handlers[IRQ_TABLE_OFF(cpu, irqn)] = handler;
-    }
+    GIC_SetCB(irqn, cpumask, NULL);
 }
 
-static void GIC_ClearCB(u32 irqn, u32 cpu)
+void __attribute__((section(".vectors"))) GIC_MainHandler(void)
 {
-    GIC_SetCB(irqn, cpu, NULL);
-}
-
-void GIC_MainHandler(void)
-{
+    u32 cpu = ARM_CoreID();
     while(1) {
-        IRQ_Handler handler;
+        GIC_IntHandler handler;
         u32 irqn = REG_GIC_IRQACK(GIC_THIS_CPU_ALIAS);
         if (irqn == GIC_IRQ_SPURIOUS)
             break;
 
-        handler = GIC_GetCB(irqn);
+        handler = GIC_GetCB(irqn, cpu);
         if (handler != NULL)
-            handler(irqn);
+            handler();
 
         REG_GIC_IRQEND(GIC_THIS_CPU_ALIAS) = irqn;
     }
@@ -105,7 +107,7 @@ void GIC_MainHandler(void)
 
 void GIC_GlobalReset(void)
 {
-    int gicn, intn;
+    u32 gicn, intn;
 
     // Number of local controllers
     gicn = ((REG_DIC_TYPE >> 5) & 3) + 1;
@@ -117,36 +119,36 @@ void GIC_GlobalReset(void)
         gicn = MAX_CPU;
 
     // Clear the interrupt table
-    for (unsigned int i = 0; i < sizeof(IRQ_Handlers)/sizeof(*IRQ_Handlers); i++)
+    for (u32 i = 0; i < countof(IRQ_Handlers); i++)
         IRQ_Handlers[i] = NULL;
 
     // Disable all MP11 GICs
-    for (int i = 0; i < gicn; i++)
+    for (u32 i = 0; i < gicn; i++)
         REG_GIC_CONTROL(i) = 0;
 
     // Disable the main DIC
     REG_DIC_CONTROL = 0;
 
     // Clear all DIC interrupts
-    for (int i = 1; i < (intn / 32); i++) {
+    for (u32 i = 1; i < (intn / 32); i++) {
         REG_DIC_CLRENABLE[i] = ~0;
         REG_DIC_CLRPENDING[i] = ~0;
     }
 
     // Reset all DIC priorities to lowest and clear target processor regs
-    for (int i = 32; i < intn; i++) {
+    for (u32 i = 32; i < intn; i++) {
         REG_DIC_PRIORITY[i] = 0;
         REG_DIC_TARGETPROC[i] = 0;
     }
 
     // Set all interrupts to rising edge triggered and 1-N model
-    for (int i = 2; i < (intn / 16); i++)
+    for (u32 i = 2; i < (intn / 16); i++)
         REG_DIC_CFGREG[i] = ~0;
 
     // Enable the main DIC
     REG_DIC_CONTROL = 1;
 
-    for (int i = 0; i < gicn; i++) {
+    for (u32 i = 0; i < gicn; i++) {
         // Compare all priority bits
         REG_GIC_POI(i) = 3;
 
@@ -181,34 +183,26 @@ void GIC_LocalReset(void)
     } while(irq_s != GIC_IRQ_SPURIOUS);
 }
 
-int GIC_Enable(u32 irqn, u32 coremask, u32 prio, IRQ_Handler handler)
+int GIC_Enable(u32 irqn, u32 cpumask, u32 prio, GIC_IntHandler handler)
 {
     if (!IRQN_IS_VALID(irqn))
         return -1;
 
-    // in theory this should be replaced by a faster CLZ lookup
-    // in practice, meh, MAX_CPU will only be 2 anyway...
-    for (int i = 0; i < MAX_CPU; i++) {
-        if (coremask & BIT(i))
-            GIC_SetCB(irqn, i, handler);
-    }
+    GIC_SetCB(irqn, cpumask, handler);
 
     REG_DIC_CLRPENDING[irqn >> 5] |= BIT(irqn & 0x1F);
     REG_DIC_SETENABLE[irqn >> 5] |= BIT(irqn & 0x1F);
     REG_DIC_PRIORITY[irqn] = prio << 4;
-    REG_DIC_TARGETPROC[irqn] = coremask;
+    REG_DIC_TARGETPROC[irqn] = cpumask;
     return 0;
 }
 
-int GIC_Disable(u32 irqn, u32 coremask)
+int GIC_Disable(u32 irqn, u32 cpumask)
 {
     if (irqn >= MAX_IRQ)
         return -1;
 
-    for (int i = 0; i < MAX_CPU; i++) {
-        if (coremask & BIT(i))
-            GIC_ClearCB(irqn, i);
-    }
+    GIC_ClearCB(irqn, cpumask);
 
     REG_DIC_CLRPENDING[irqn >> 5] |= BIT(irqn & 0x1F);
     REG_DIC_CLRENABLE[irqn >> 5] |= BIT(irqn & 0x1F);
@@ -216,7 +210,7 @@ int GIC_Disable(u32 irqn, u32 coremask)
     return 0;
 }
 
-void GIC_TriggerSoftIRQ(u32 irqn, u32 mode, u32 coremask)
+void GIC_TriggerSoftIRQ(u32 irqn, u32 mode, u32 cpumask)
 {
-    REG_DIC_SOFTINT = (mode << 24) | (coremask << 16) | irqn;
+    REG_DIC_SOFTINT = (mode << 24) | (cpumask << 16) | irqn;
 }

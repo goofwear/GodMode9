@@ -99,7 +99,6 @@ static const u8 MMU_TypeLUT[MEMORY_TYPES][2] = {
 	[CACHED_WB] = {1, 3},
 	[CACHED_WB_ALLOC] = {1, 3},
 };
-
 static u32 MMU_GetTEX(u32 f)
 {
 	return MMU_TypeLUT[MMU_FLAGS_TYPE(f)][0];
@@ -110,17 +109,14 @@ static u32 MMU_GetCB(u32 f)
 	return MMU_TypeLUT[MMU_FLAGS_TYPE(f)][1];
 }
 
+static const u8 MMU_AccessLUT[ACCESS_TYPES] = {
+	[NO_ACCESS] = 0,
+	[READ_ONLY] = 0x21,
+	[READ_WRITE] = 0x01,
+};
 static u32 MMU_GetAP(u32 f)
 {
-	switch(MMU_FLAGS_ACCESS(f)) {
-		default:
-		case NO_ACCESS:
-			return 0;
-		case READ_ONLY:
-			return 0x21;
-		case READ_WRITE:
-			return 0x01;
-	}
+	return MMU_AccessLUT[MMU_FLAGS_ACCESS(f)];
 }
 
 static u32 MMU_GetNX(u32 f)
@@ -216,7 +212,7 @@ static bool MMU_MapSection(u32 va, u32 pa, u32 flags)
 
 
 /* Large Pages */
-static u32 MMU_LargePageFlags(u32 f)
+/*static u32 MMU_LargePageFlags(u32 f)
 {
 	return (MMU_GetNX(f) << 15) | (MMU_GetTEX(f) << 12) |
 		(MMU_GetShared(f) << 10) | (MMU_GetAP(f) << 4) |
@@ -234,7 +230,7 @@ static bool MMU_MapLargePage(u32 va, u32 pa, u32 flags)
 		l2->desc[L2_VA_IDX(i)] = pa | MMU_LargePageFlags(flags);
 
 	return true;
-}
+}*/
 
 
 /* Pages */
@@ -272,10 +268,10 @@ u32 MMU_Map(u32 va, u32 pa, u32 size, u32 flags)
 			.bits = SECT_ADDR_SHIFT,
 			.mapfn = MMU_MapSection,
 		},
-		{
+		/*{
 			.bits = LPAGE_ADDR_SHIFT,
 			.mapfn = MMU_MapLargePage,
-		},
+		},*/
 		{
 			.bits = PAGE_ADDR_SHIFT,
 			.mapfn = MMU_MapPage,

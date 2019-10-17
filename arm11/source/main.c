@@ -46,14 +46,17 @@ static int prev_bright_lvl = -1;
 #endif
 
 static bool auto_brightness = true;
+static bool legacy_boot = false;
 
-void VBlank_Handler(u32 __attribute__((unused)) irqn)
+void VBlank_Handler(void)
 {
 	#ifndef FIXED_BRIGHTNESS
-	int cur_bright_lvl = (MCU_GetVolumeSlider() >> 2) % countof(brightness_lvls);
-	if ((cur_bright_lvl != prev_bright_lvl) && auto_brightness) {
-		prev_bright_lvl = cur_bright_lvl;
-		LCD_SetBrightness(brightness_lvls[cur_bright_lvl]);
+	if (auto_brightness) {
+		int blvl = (MCU_GetVolumeSlider() >> 2) % countof(brightness_lvls);
+		if (blvl != prev_bright_lvl) {
+			prev_bright_lvl = blvl;
+			LCD_SetBrightness(brightness_lvls[blvl]);
+		}
 	}
 	#endif
 
@@ -65,9 +68,7 @@ void VBlank_Handler(u32 __attribute__((unused)) irqn)
 	ARM_DMB();
 }
 
-static bool legacy_boot = false;
-
-void PXI_RX_Handler(u32 __attribute__((unused)) irqn)
+void PXI_RX_Handler(void)
 {
 	u32 ret, msg, cmd, argc, args[PXI_MAX_ARGS];
 
@@ -82,12 +83,12 @@ void PXI_RX_Handler(u32 __attribute__((unused)) irqn)
 
 	PXI_RecvArray(args, argc);
 
+	ret = 0;
 	switch (cmd) {
 		case PXI_LEGACY_MODE:
 		{
 			// TODO: If SMP is enabled, an IPI should be sent here (with a DSB)
 			legacy_boot = true;
-			ret = 0;
 			break;
 		}
 
@@ -102,7 +103,6 @@ void PXI_RX_Handler(u32 __attribute__((unused)) irqn)
 			int mode = args[0] ? PDC_RGB24 : PDC_RGB565;
 			GPU_SetFramebufferMode(0, mode);
 			GPU_SetFramebufferMode(1, mode);
-			ret = 0;
 			break;
 		}
 
@@ -135,21 +135,20 @@ void PXI_RX_Handler(u32 __attribute__((unused)) irqn)
 			NVRAM_Read(args[0], (u32*)args[1], args[2]);
 			ARM_WbDC_Range((void*)args[1], args[2]);
 			ARM_DMB();
-			ret = 0;
 			break;
 		}
 
 		case PXI_NOTIFY_LED:
 		{
 			MCU_SetNotificationLED(args[0], args[1]);
-			ret = 0;
 			break;
 		}
 
 		case PXI_BRIGHTNESS:
 		{
 			ret = LCD_GetBrightness();
-			if ((args[0] > 0) && (args[0] < 0x100)) {
+			args[0] &= 0xFF;
+			if (args[0]) {
 				LCD_SetBrightness(args[0]);
 				auto_brightness = false;
 			} else {

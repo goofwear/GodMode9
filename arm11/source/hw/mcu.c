@@ -16,15 +16,17 @@
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <hid_map.h>
-#include <types.h>
 #include <arm.h>
+#include <common.h>
+#include <hid_map.h>
 
 #include "arm/timer.h"
 
 #include "hw/gpio.h"
 #include "hw/gpulcd.h"
 #include "hw/mcu.h"
+
+#define HID_SHELL_MASK	(SHELL_OPEN | SHELL_CLOSED)
 
 enum {
 	MCU_PWR_BTN = 0,
@@ -66,34 +68,24 @@ typedef struct {
 	u32 blue[8];
 } PACKED_STRUCT MCU_NotificationLED;
 
-static u8 cached_volume_slider = 0;
-static u32 spec_hid = 0, shell_state = SHELL_OPEN;
-
-static void MCU_UpdateVolumeSlider(void)
-{
-	cached_volume_slider = MCU_ReadReg(REG_VOL_SLIDER);
-}
-
-static void MCU_UpdateShellState(bool open)
-{
-	shell_state = open ? SHELL_OPEN : SHELL_CLOSED;
-}
+static u8 mcu_volume;
+static u32 mcu_hid;
 
 u8 MCU_GetVolumeSlider(void)
 {
-	return cached_volume_slider;
+	return mcu_volume;
 }
 
 u32 MCU_GetSpecialHID(void)
 {
-	u32 ret = spec_hid | shell_state;
-	spec_hid = 0;
+	u32 ret = mcu_hid;
+	mcu_hid &= HID_SHELL_MASK;
 	return ret;
 }
 
 void MCU_SetNotificationLED(u32 period_ms, u32 color)
 {
-	u32 r, g, b;
+	u32 c;
 	MCU_NotificationLED led_state;
 
 	// handle proper non-zero periods
@@ -109,20 +101,20 @@ void MCU_SetNotificationLED(u32 period_ms, u32 color)
 	// all colors look like 0x00ZZ00ZZ
 	// in order to alternate between
 	// LED "off" and the wanted color
-	r = (color >> 16) & 0xFF;
-	r |= r << 16;
+	c = (color >> 16) & 0xFF;
+	c |= c << 16;
 	for (int i = 0; i < 8; i++)
-		led_state.red[i] = r;
+		led_state.red[i] = c;
 
-	g = (color >> 8) & 0xFF;
-	g |= g << 16;
+	c = (color >> 8) & 0xFF;
+	c |= c << 16;
 	for (int i = 0; i < 8; i++)
-		led_state.green[i] = g;
+		led_state.green[i] = c;
 
-	b = color & 0xFF;
-	b |= b << 16;
+	c = color & 0xFF;
+	c |= c << 16;
 	for (int i = 0; i < 8; i++)
-		led_state.blue[i] = b;
+		led_state.blue[i] = c;
 
 	MCU_WriteRegBuf(REG_LED_NOTIF, (const u8*)&led_state, sizeof(led_state));
 }
@@ -138,74 +130,80 @@ void MCU_ResetLED(void)
 void MCU_PushToLCD(bool enable)
 {
 	MCU_WriteReg(REG_LCD_STATE, enable ? 0x2A : 0x01);
+	TIMER_WaitTicks(CLK_MS_TO_TICKS(5));
 }
 
-void MCU_HandleInterrupts(u32 __attribute__((unused)) irqn)
+void MCU_HandleInterrupts(void)
 {
-	u32 ints;
+	u32 mcu_pend, local_mcu_hid;
 
 	// Reading the pending mask automagically acknowledges
 	// the interrupts so all of them must be processed in one go
-	MCU_ReadRegBuf(REG_INT_MASK, (u8*)&ints, sizeof(ints));
+	MCU_ReadRegBuf(REG_INT_MASK, (u8*)&mcu_pend, sizeof(mcu_pend));
 
-	while(ints != 0) {
-		u32 mcu_int_id = 31 - __builtin_clz(ints);
+	local_mcu_hid = mcu_hid;
+	while(mcu_pend != 0) {
+		u32 mcu_int = top_bit(mcu_pend);
 
-		switch(mcu_int_id) {
+		if (mcu_int == MCU_VOL_SLIDER) {
+			// early exit - prevents a huge gap in the jump table below
+			mcu_volume = MCU_ReadReg(REG_VOL_SLIDER);
+		}
+
+		else switch(mcu_int) {
 			case MCU_PWR_BTN:
 			case MCU_PWR_HOLD:
-				spec_hid |= BUTTON_POWER;
+				local_mcu_hid |= BUTTON_POWER;
 				break;
 
 			case MCU_HOME_BTN:
-				spec_hid |= BUTTON_HOME;
+				local_mcu_hid |= BUTTON_HOME;
 				break;
 
 			case MCU_HOME_LIFT:
-				spec_hid &= ~BUTTON_HOME;
+				local_mcu_hid &= ~BUTTON_HOME;
 				break;
 
 			case MCU_WIFI_SWITCH:
-				spec_hid |= BUTTON_WIFI;
+				local_mcu_hid |= BUTTON_WIFI;
 				break;
 
 			case MCU_SHELL_OPEN:
 				MCU_PushToLCD(true);
-				MCU_UpdateShellState(true);
-				TIMER_WaitTicks(CLK_MS_TO_TICKS(5));
+				local_mcu_hid &= ~HID_SHELL_MASK;
+				local_mcu_hid |= SHELL_OPEN;
 				MCU_ResetLED();
 				break;
 
 			case MCU_SHELL_CLOSE:
 				MCU_PushToLCD(false);
-				MCU_UpdateShellState(false);
-				TIMER_WaitTicks(CLK_MS_TO_TICKS(5));
-				break;
-
-			case MCU_VOL_SLIDER:
-				MCU_UpdateVolumeSlider();
+				local_mcu_hid &= ~HID_SHELL_MASK;
+				local_mcu_hid |= SHELL_CLOSED;
 				break;
 
 			default:
 				break;
 		}
 
-		ints &= ~BIT(mcu_int_id);
+		mcu_pend &= ~BIT(mcu_int);
 	}
+	mcu_hid = local_mcu_hid;
 }
 
 void MCU_Init(void)
 {
-	u32 clrpend, mask = 0xFFBF0800;
+	u32 mask = 0xFFBF0800;
 
-	/* set register mask and clear any pending registers */
+	// set register mask and clear any pending registers
 	MCU_WriteRegBuf(REG_INT_EN, (const u8*)&mask, sizeof(mask));
-	MCU_ReadRegBuf(REG_INT_MASK, (u8*)&clrpend, sizeof(clrpend));
+	MCU_ReadRegBuf(REG_INT_MASK, (u8*)&mask, sizeof(mask));
 
 	MCU_ResetLED();
 
-	MCU_UpdateVolumeSlider();
-	MCU_UpdateShellState(MCU_ReadReg(REG_CONSOLE_STATE) & BIT(1));
+	mcu_volume = MCU_ReadReg(REG_VOL_SLIDER);
+	mcu_hid = MCU_ReadReg(REG_CONSOLE_STATE) & BIT(1) ? \
+		SHELL_OPEN : SHELL_CLOSED;
 
+	// enable MCU HID interrupts
 	GPIO_setBit(19, 9);
 }

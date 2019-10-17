@@ -34,20 +34,20 @@
 
 #include "system/sections.h"
 
-#define CFG11_MPCORE_CLKCNT	((vu16*)(0x10141300))
-#define CFG11_SOCINFO		((vu16*)(0x10140FFC))
+#define REG_CFG11_CLKCNT	((vu16*)(0x10141300))
+#define REG_CFG11_SOCINFO	((vu16*)(0x10140FFC))
 
 #define LEGACY_BOOT_ENTRYPOINT	((vu32*)0x1FFFFFFC)
 #define LEGACY_BOOT_ROUTINE_SMP	(0x0001004C)
 
 static bool SYS_IsNewConsole(void)
 {
-	return (*CFG11_SOCINFO & 2) != 0;
+	return (*REG_CFG11_SOCINFO & BIT(1)) != 0;
 }
 
 static bool SYS_ClkMultEnabled(void)
 {
-	return (*CFG11_MPCORE_CLKCNT & 1) != 0;
+	return (*REG_CFG11_CLKCNT & BIT(0)) != 0;
 }
 
 static void SYS_EnableClkMult(void)
@@ -58,10 +58,10 @@ static void SYS_EnableClkMult(void)
 	// as early as possible in the initialization chain
 	if (SYS_IsNewConsole() && !SYS_ClkMultEnabled()) {
 		GIC_Enable(88, BIT(0), GIC_HIGHEST_PRIO, NULL);
-		*CFG11_MPCORE_CLKCNT = 0x8001;
+		*REG_CFG11_CLKCNT = 0x8001;
 		do {
 			ARM_WFI();
-		} while(!(*CFG11_MPCORE_CLKCNT & 0x8000));
+		} while(!(*REG_CFG11_CLKCNT & BIT(15)));
 		GIC_Disable(88, BIT(0));
 	}
 }
@@ -108,17 +108,14 @@ void SYS_CoreZeroInit(void)
 	SPI_Init();
 	CODEC_Init();
 
-	GPU_Init();
+	GPULCD_Init();
 	GPU_PSCFill(VRAM_START, VRAM_END, 0);
 	GPU_SetFramebuffers((u32[]){VRAM_TOP_LA, VRAM_TOP_LB,
 								VRAM_TOP_RA, VRAM_TOP_RB,
 								VRAM_BOT_A,  VRAM_BOT_B});
 
-	GPU_SetFramebufferMode(0, PDC_RGB24);
-	GPU_SetFramebufferMode(1, PDC_RGB24);
-
-	MCU_PushToLCD(true);
-	TIMER_WaitTicks(CLK_MS_TO_TICKS(5));
+	GPU_SetFramebufferMode(0, PDC_RGB565);
+	GPU_SetFramebufferMode(1, PDC_RGB565);
 }
 
 void SYS_CoreInit(void)
@@ -149,7 +146,7 @@ void SYS_CoreZeroShutdown(void)
 
 void __attribute__((noreturn)) SYS_CoreShutdown(void)
 {
-	u32 core = ARM_CoreID();
+	u32 entry, core = ARM_CoreID();
 
 	ARM_DisableInterrupts();
 
@@ -166,12 +163,14 @@ void __attribute__((noreturn)) SYS_CoreShutdown(void)
 	SPI_Deinit();
 
 	if (!core) {
-		while(*LEGACY_BOOT_ENTRYPOINT == 0);
-		((void (*)(void))(*LEGACY_BOOT_ENTRYPOINT))();
+		// wait until the entrypoint is non-zero
+		do {entry = *LEGACY_BOOT_ENTRYPOINT;} while(!entry);
 	} else {
 		// Branch to bootrom function that does SMP reinit magic
 		// (waits for IPI + branches to word @ 0x1FFFFFDC)
-		((void (*)(void))LEGACY_BOOT_ROUTINE_SMP)();
+		entry = LEGACY_BOOT_ROUTINE_SMP;
 	}
+
+	((void (*)(void))entry)();
 	__builtin_unreachable();
 }

@@ -35,6 +35,7 @@ enum MMU_MemoryAccess {
 	NO_ACCESS = 0,
 	READ_ONLY,
 	READ_WRITE,
+	ACCESS_TYPES
 };
 
 #define MMU_FLAGS(t, ap, nx, s)	((s) << 25 | (nx) << 24 | (ap) << 8 | (t))

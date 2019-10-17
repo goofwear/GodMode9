@@ -33,7 +33,7 @@ void MCU_ResetLED(void);
 
 void MCU_PushToLCD(bool enable);
 
-void MCU_HandleInterrupts(u32 irqn);
+void MCU_HandleInterrupts(void);
 
 void MCU_Init(void);
 

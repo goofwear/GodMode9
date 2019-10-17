@@ -55,16 +55,16 @@ static u32 HID_ConvertCPAD(s16 cpad_x, s16 cpad_y)
 
 u64 HID_GetState(void)
 {
-	CODEC_Input codec;
-	u64 ret = 0;
+	CODEC_InputData codec;
+	u64 ret;
 
-	CODEC_Get(&codec);
+	CODEC_GetInputData(&codec);
 
 	ret = REG_HID | MCU_GetSpecialHID();
 	if (!(ret & BUTTON_ARROW))
 		ret |= HID_ConvertCPAD(codec.cpad_x, codec.cpad_y);
 
-	if (codec.ts_x <= 0xFFF)
+	if (HID_TS_VALID(codec.ts_x))
 		ret |= BUTTON_TOUCH;
 
 	ret |= (((u64)codec.ts_x << 16) | (u64)codec.ts_y) << 32;
